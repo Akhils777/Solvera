@@ -1,4 +1,5 @@
 import { ReflectionMode, TurnMessage } from '../types';
+import { getAuthIdToken } from './firebase';
 
 export interface ReflectResponse {
   success: boolean;
@@ -17,16 +18,26 @@ export interface SummarizeResponse {
   modelUsed: string;
 }
 
+async function getAuthHeaders(): Promise<Record<string, string>> {
+  const token = await getAuthIdToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 export async function askGeminiReflection(
   reflection: string,
   mode: ReflectionMode = 'reflect',
   history: TurnMessage[] = []
 ): Promise<ReflectResponse> {
+  const headers = await getAuthHeaders();
   const response = await fetch('/api/gemini/reflect', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({
       reflection,
       mode,
@@ -43,11 +54,10 @@ export async function askGeminiReflection(
 }
 
 export async function askGeminiSummarize(text: string): Promise<SummarizeResponse> {
+  const headers = await getAuthHeaders();
   const response = await fetch('/api/gemini/summarize', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({ text }),
   });
 
@@ -62,11 +72,10 @@ export async function askGeminiSummarize(text: string): Promise<SummarizeRespons
 export async function askGeminiInsights(
   reflections: Array<{ title: string; text?: string; summary?: string; tags?: string[]; createdAt: number }>
 ): Promise<{ success: boolean; data: any; modelUsed: string }> {
+  const headers = await getAuthHeaders();
   const response = await fetch('/api/gemini/insights', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({ reflections }),
   });
 
@@ -92,11 +101,10 @@ export async function askGeminiGoalDecompose(
   };
   modelUsed: string;
 }> {
+  const headers = await getAuthHeaders();
   const response = await fetch('/api/gemini/goal-decompose', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({ intention, category }),
   });
 
@@ -124,11 +132,10 @@ export async function askGeminiWeeklyReview(
   };
   modelUsed: string;
 }> {
+  const headers = await getAuthHeaders();
   const response = await fetch('/api/gemini/weekly-review', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({ reflections, goals }),
   });
 

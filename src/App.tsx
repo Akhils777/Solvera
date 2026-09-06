@@ -150,19 +150,6 @@ export default function App() {
     }
   };
 
-  // Demo Sign-In (Ensures sandbox preview functionality without external Google redirect constraints)
-  const handleDemoSignIn = async () => {
-    const demoUser: AuthUser = {
-      uid: 'demo_user_' + Math.random().toString(36).substring(2, 8),
-      email: 'alex@solvera.app',
-      displayName: 'Alex Chen',
-      photoURL: null,
-      isDemo: true,
-    };
-    setUser(demoUser);
-    await loadAllUserData(demoUser.uid);
-  };
-
   const handleSignOut = async () => {
     await logOut();
     setUser(null);
@@ -485,7 +472,6 @@ export default function App() {
         <div className="flex-1 overflow-y-auto">
           <LandingPage
             onSignIn={handleSignIn}
-            onDemoSignIn={handleDemoSignIn}
             isLoading={authLoading}
             error={authError}
           />

@@ -1,8 +1,10 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { createServer as createViteServer } from 'vite';
+import { initializeApp as initAdminApp, getApps as getAdminApps } from 'firebase-admin/app';
+import { getAuth as getAdminAuth } from 'firebase-admin/auth';
 
 dotenv.config();
 
@@ -12,6 +14,75 @@ const PORT = 3000;
 // 1. Top-Level Request Deserialization (Ordering Guarantee)
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// Firebase Admin initialization for server-side ID token verification
+const FIREBASE_PROJECT_ID =
+  process.env.VITE_FIREBASE_PROJECT_ID ||
+  process.env.FIREBASE_PROJECT_ID ||
+  'solvera-bac83';
+
+let adminAuthInstance: ReturnType<typeof getAdminAuth> | null = null;
+function getAdminAuthClient() {
+  if (!adminAuthInstance) {
+    const adminApp =
+      getAdminApps().length === 0
+        ? initAdminApp({ projectId: FIREBASE_PROJECT_ID })
+        : getAdminApps()[0];
+    adminAuthInstance = getAdminAuth(adminApp);
+  }
+  return adminAuthInstance;
+}
+
+export interface AuthenticatedRequest extends Request {
+  user?: {
+    uid: string;
+    email?: string;
+  };
+}
+
+// Authentication Middleware: Enforces valid Firebase ID token on protected routes
+async function requireFirebaseAuth(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction
+) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || typeof authHeader !== 'string') {
+    return res.status(401).json({
+      error: 'Unauthorized: Missing Authorization header.',
+    });
+  }
+
+  const parts = authHeader.trim().split(' ');
+  if (parts.length !== 2 || parts[0].toLowerCase() !== 'bearer' || !parts[1]) {
+    return res.status(401).json({
+      error: 'Unauthorized: Malformed Authorization header. Expected Bearer <token>.',
+    });
+  }
+
+  const idToken = parts[1];
+
+  try {
+    const auth = getAdminAuthClient();
+    const decodedToken = await auth.verifyIdToken(idToken);
+    if (!decodedToken || !decodedToken.uid) {
+      return res.status(401).json({
+        error: 'Unauthorized: Invalid authentication credentials.',
+      });
+    }
+
+    req.user = {
+      uid: decodedToken.uid,
+      email: decodedToken.email,
+    };
+    next();
+  } catch (err: any) {
+    console.warn('[Auth Middleware] Token verification rejected:', err?.code || err?.message);
+    return res.status(401).json({
+      error: 'Unauthorized: Token is invalid, expired, or rejected.',
+    });
+  }
+}
 
 // Resilient Gemini Fallback Ladder
 const FALLBACK_MODELS = [
@@ -110,7 +181,7 @@ app.get('/api/firebase-config', (_req: Request, res: Response) => {
 });
 
 // Main Gemini Reflection & Conversation Endpoint
-app.post('/api/gemini/reflect', async (req: Request, res: Response) => {
+app.post('/api/gemini/reflect', requireFirebaseAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     // 2. Defensive Payload Ingestion (Null-Safe Destructuring)
     const data = (req.body && typeof req.body === 'object') ? req.body : {};
@@ -179,7 +250,7 @@ Your mission is to help the user turn thoughts into clarity, unpack feelings, di
 });
 
 // Quick Summarization / Title Generator Endpoint
-app.post('/api/gemini/summarize', async (req: Request, res: Response) => {
+app.post('/api/gemini/summarize', requireFirebaseAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const data = (req.body && typeof req.body === 'object') ? req.body : {};
     const text = typeof data.text === 'string' ? data.text.trim() : '';
@@ -195,8 +266,9 @@ app.post('/api/gemini/summarize', async (req: Request, res: Response) => {
 
 Respond with ONLY valid JSON without markdown wrapping.
 
-Text:
-${text.slice(0, 3000)}`;
+<user_content>
+${text.slice(0, 3000)}
+</user_content>`;
 
     const result = await generateContentWithFallback(prompt);
     let parsed = { title: 'Journal Reflection', summary: text.slice(0, 120) + '...', tags: ['Reflection'] };
@@ -221,7 +293,7 @@ ${text.slice(0, 3000)}`;
 });
 
 // 5. AI Insight Engine Endpoint: Cross-reflection pattern analysis
-app.post('/api/gemini/insights', async (req: Request, res: Response) => {
+app.post('/api/gemini/insights', requireFirebaseAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const data = (req.body && typeof req.body === 'object') ? req.body : {};
     const reflections = Array.isArray(data.reflections) ? data.reflections : [];
@@ -258,8 +330,9 @@ Return ONLY a JSON object formatted strictly as:
   "suggestedActions": ["Specific, bite-sized next step 1", "Next step 2", "Next step 3"]
 }
 
-User Journal Entries:
-${compiledReflections}`;
+<user_journal_entries>
+${compiledReflections}
+</user_journal_entries>`;
 
     const result = await generateContentWithFallback(prompt);
     let parsed: any = null;
@@ -292,7 +365,7 @@ ${compiledReflections}`;
 });
 
 // 6. Natural Language Goal Decomposer Endpoint
-app.post('/api/gemini/goal-decompose', async (req: Request, res: Response) => {
+app.post('/api/gemini/goal-decompose', requireFirebaseAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const data = (req.body && typeof req.body === 'object') ? req.body : {};
     const intention = typeof data.intention === 'string' ? data.intention.trim() : '';
@@ -305,9 +378,6 @@ app.post('/api/gemini/goal-decompose', async (req: Request, res: Response) => {
     const prompt = `You are an expert productivity and goal architect in Solvéra.
 Convert the user's natural language intention into a structured, measurable goal with 3 to 5 realistic, bite-sized actionable tasks.
 
-User Intention: "${intention}"
-Preferred Category: "${category}"
-
 Return ONLY a JSON object formatted strictly as:
 {
   "title": "A concise, active goal title (e.g. Master Python Fundamentals)",
@@ -319,7 +389,12 @@ Return ONLY a JSON object formatted strictly as:
     "Actionable step 2",
     "Actionable step 3"
   ]
-}`;
+}
+
+<user_goal_context>
+User Intention: "${intention.slice(0, 500)}"
+Preferred Category: "${category.slice(0, 100)}"
+</user_goal_context>`;
 
     const result = await generateContentWithFallback(prompt);
     let parsed: any = null;
@@ -350,7 +425,7 @@ Return ONLY a JSON object formatted strictly as:
 });
 
 // 7. Weekly AI Review Endpoint
-app.post('/api/gemini/weekly-review', async (req: Request, res: Response) => {
+app.post('/api/gemini/weekly-review', requireFirebaseAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const data = (req.body && typeof req.body === 'object') ? req.body : {};
     const reflections = Array.isArray(data.reflections) ? data.reflections : [];
@@ -374,12 +449,6 @@ app.post('/api/gemini/weekly-review', async (req: Request, res: Response) => {
 Synthesize the user's week based on their journal entries and goal tracker activities.
 Highlight major progress, key thoughts, unfinished actions needing attention, and recommend 3 focused priorities for the upcoming week.
 
-Weekly Reflections:
-${reflectionSummary || 'No journal entries logged this week.'}
-
-Active Goals & Actions:
-${goalsSummary || 'No active goals recorded.'}
-
 Return ONLY a JSON object formatted strictly as:
 {
   "weekSummary": "2-3 sentence executive review of the week's cadence and milestones",
@@ -389,7 +458,15 @@ Return ONLY a JSON object formatted strictly as:
   "unfinishedActions": ["Key pending task to carry forward 1", "Task 2"],
   "importantReflections": ["Key realization or mental model from the week"],
   "prioritiesNextWeek": ["Top priority 1", "Top priority 2", "Top priority 3"]
-}`;
+}
+
+<user_weekly_data>
+Weekly Reflections:
+${reflectionSummary || 'No journal entries logged this week.'}
+
+Active Goals & Actions:
+${goalsSummary || 'No active goals recorded.'}
+</user_weekly_data>`;
 
     const result = await generateContentWithFallback(prompt);
     let parsed: any = null;

@@ -169,16 +169,16 @@ export function ReflectionInput({
             />
             <span>
               {syncStatus === 'saving'
-                ? 'Persisting to Firestore...'
+                ? 'Saving...'
                 : syncStatus === 'saved'
-                ? 'Saved to Cloud Firestore'
-                : 'Cloud Firestore Linked'}
+                ? 'Saved securely'
+                : 'Saved securely'}
             </span>
           </div>
 
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
-            <span>Gemini Flash Engine</span>
+            <span>AI Connected</span>
           </div>
         </div>
       </div>

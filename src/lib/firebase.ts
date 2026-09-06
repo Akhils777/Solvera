@@ -55,9 +55,21 @@ export function isFirebaseConfigured(): boolean {
 
 // Check if currently authenticated with a real Firebase Auth user matching userId
 export function isRealFirebaseUser(userId: string): boolean {
-  if (!userId || userId.startsWith('demo_user_')) return false;
+  if (!userId) return false;
   const { auth } = initFirebase();
   return Boolean(auth && auth.currentUser && auth.currentUser.uid === userId);
+}
+
+// Get current Firebase Auth ID token for authenticating backend requests
+export async function getAuthIdToken(): Promise<string | null> {
+  const { auth } = initFirebase();
+  if (!auth || !auth.currentUser) return null;
+  try {
+    return await auth.currentUser.getIdToken();
+  } catch (err) {
+    console.error('Failed to retrieve Firebase ID token:', err);
+    return null;
+  }
 }
 
 // Initialize Firebase services safely
