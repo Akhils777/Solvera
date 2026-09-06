@@ -131,9 +131,6 @@ export function InsightsView({
                   minute: '2-digit',
                 })}
               </span>
-              <span className="rounded-full bg-white/5 px-2 py-0.5 font-mono text-[10px] text-white/60">
-                {currentInsight.modelUsed || 'gemini-3.6-flash'}
-              </span>
             </div>
 
             <h2 className="text-sm font-semibold uppercase tracking-wider text-indigo-300">

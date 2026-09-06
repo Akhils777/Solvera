@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   Shield,
   Sparkles,
@@ -8,6 +9,9 @@ import {
   ArrowRight,
   Compass,
   CheckCircle2,
+  Copy,
+  Check,
+  ExternalLink,
 } from 'lucide-react';
 
 interface LandingPageProps {
@@ -23,6 +27,17 @@ export function LandingPage({
   isLoading,
   error,
 }: LandingPageProps) {
+  const [copied, setCopied] = useState(false);
+  const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  const isUnauthorizedDomain = error?.toLowerCase().includes('unauthorized-domain');
+
+  const copyHostname = () => {
+    if (navigator.clipboard && currentHostname) {
+      navigator.clipboard.writeText(currentHostname);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
   return (
     <div className="min-h-[calc(100vh-4rem)] flex flex-col justify-center py-16 px-4 sm:px-6 lg:px-8 bg-[#080808] text-[#e0e0e0] relative overflow-hidden">
       {/* Background ambient radial glow */}
@@ -46,9 +61,40 @@ export function LandingPage({
 
         {/* Error Banner */}
         {error && (
-          <div className="mt-6 mx-auto max-w-md rounded-2xl border border-red-500/30 bg-red-950/40 backdrop-blur-sm p-4 text-left text-xs text-red-200">
-            <p className="font-semibold text-red-100">Authentication Notice</p>
-            <p className="mt-1 text-red-300">{error}</p>
+          <div className="mt-6 mx-auto max-w-lg rounded-2xl border border-red-500/30 bg-red-950/40 backdrop-blur-sm p-4 sm:p-5 text-left text-xs text-red-200 shadow-xl">
+            <div className="flex items-center gap-2">
+              <span className="flex h-2 w-2 rounded-full bg-red-400 animate-pulse" />
+              <p className="font-semibold text-red-100">
+                {isUnauthorizedDomain
+                  ? 'Sign-in Domain Authorization Required'
+                  : 'Authentication Notice'}
+              </p>
+            </div>
+
+            {isUnauthorizedDomain ? (
+              <div className="mt-2.5 space-y-3 text-red-200/90 leading-relaxed">
+                <p>
+                  Google Sign-In is not yet authorized for this domain. Please authorize this preview domain in your sign-in configuration.
+                </p>
+
+                <div className="rounded-xl border border-red-500/20 bg-black/50 p-3">
+                  <div className="text-[11px] text-white/60 mb-1">Domain to authorize:</div>
+                  <div className="flex items-center justify-between gap-2 font-mono text-xs text-emerald-400 bg-black/80 px-3 py-2 rounded-lg border border-white/10">
+                    <span className="truncate select-all">{currentHostname}</span>
+                    <button
+                      type="button"
+                      onClick={copyHostname}
+                      className="shrink-0 flex items-center gap-1.5 text-xs text-white/90 hover:text-white bg-white/10 hover:bg-white/20 px-2.5 py-1 rounded-md cursor-pointer transition-colors"
+                    >
+                      {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                      <span>{copied ? 'Copied!' : 'Copy'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-1 text-red-300">{error}</p>
+            )}
           </div>
         )}
 
@@ -106,7 +152,7 @@ export function LandingPage({
 
         <p className="mt-4 text-[11px] text-white/40 flex items-center justify-center gap-1.5 uppercase tracking-wider">
           <Lock className="h-3 w-3 text-white/30" />
-          <span>Zero passwords handled • Firestore user-isolated security rules</span>
+          <span>Private and secure • Your data is always yours</span>
         </p>
 
         {/* 5 Core Feature Pillars */}
@@ -163,16 +209,16 @@ export function LandingPage({
             </p>
           </div>
 
-          {/* Pillar 5: Owner-Bound Privacy */}
+          {/* Pillar 5: Private & Dedicated */}
           <div className="rounded-2xl border border-white/5 bg-[#0d0d0d] p-6 hover:border-white/10 transition-colors md:col-span-2">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-400 mb-4 border border-cyan-500/20">
               <Shield className="h-4 w-4" />
             </div>
             <h2 className="text-sm font-semibold text-white tracking-wide">
-              Privacy &amp; User-Isolated Security Architecture
+              Private, Secure &amp; Always Yours
             </h2>
             <p className="mt-2 text-xs text-white/50 leading-relaxed">
-              All documents, goals, and reflections are strictly sandboxed under <code className="text-indigo-300 font-mono text-[11px]">/users/{'{userId}'}/**</code> and secured by owner-bound Firestore security rules. No cross-user leakage, zero hardcoded keys, and full export sovereignty at any time.
+              Your reflections, goals, and thoughts are kept completely private to your account. Solvéra ensures complete confidentiality with dedicated data isolation, no third-party tracking, and full export sovereignty at any time.
             </p>
           </div>
         </div>

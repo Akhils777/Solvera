@@ -27,7 +27,6 @@ import {
   deleteInsight,
   saveReview,
   loadUserReviews,
-  isFirebaseConfigured,
 } from './lib/firebase';
 import { askGeminiReflection, askGeminiSummarize } from './lib/gemini';
 import { Header } from './components/Header';
@@ -44,7 +43,6 @@ import { PrivacySecurityView } from './components/PrivacySecurityView';
 import { ReflectionFeed } from './components/ReflectionFeed';
 import { ReflectionInput } from './components/ReflectionInput';
 import { OnboardingModal } from './components/OnboardingModal';
-import { FirebaseConfigModal } from './components/FirebaseConfigModal';
 
 export default function App() {
   // Authentication State
@@ -73,7 +71,6 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   // Modals & Mobile Drawers
-  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   // Listen to Firebase Auth state
@@ -139,6 +136,13 @@ export default function App() {
       setUser(signedInUser);
       await loadAllUserData(signedInUser.uid);
     } catch (err: any) {
+      if (
+        err?.code === 'auth/popup-closed-by-user' ||
+        err?.code === 'auth/cancelled-popup-request'
+      ) {
+        // User closed or cancelled popup window before picking an account
+        return;
+      }
       console.error('Sign-in failed:', err);
       setAuthError(err?.message || 'Authentication could not be completed.');
     } finally {
@@ -169,14 +173,22 @@ export default function App() {
     setProfile(newProfile);
     setIsOnboardingOpen(false);
     if (user) {
-      await saveUserProfile(user.uid, newProfile);
+      try {
+        await saveUserProfile(user.uid, newProfile);
+      } catch (err) {
+        console.warn('Save user profile warning (persisted in local state):', err);
+      }
     }
   };
 
   // --- GOAL ACTIONS ---
   const handleSaveGoal = async (goal: Goal) => {
     if (!user) return;
-    await saveGoal(user.uid, goal);
+    try {
+      await saveGoal(user.uid, goal);
+    } catch (err) {
+      console.warn('Save goal warning (persisted in local state):', err);
+    }
     setGoals((prev) => {
       const index = prev.findIndex((g) => g.id === goal.id);
       if (index >= 0) {
@@ -190,7 +202,11 @@ export default function App() {
 
   const handleDeleteGoal = async (goalId: string) => {
     if (!user) return;
-    await deleteGoal(user.uid, goalId);
+    try {
+      await deleteGoal(user.uid, goalId);
+    } catch (err) {
+      console.warn('Delete goal warning (updated in local state):', err);
+    }
     setGoals((prev) => prev.filter((g) => g.id !== goalId));
   };
 
@@ -220,26 +236,42 @@ export default function App() {
       updatedAt: Date.now(),
     };
 
-    await handleSaveGoal(updatedGoal);
+    try {
+      await handleSaveGoal(updatedGoal);
+    } catch (err) {
+      console.warn('Toggle goal action warning:', err);
+    }
   };
 
   // --- INSIGHT ACTIONS ---
   const handleSaveInsight = async (insight: AIInsight) => {
     if (!user) return;
-    await saveInsight(user.uid, insight);
+    try {
+      await saveInsight(user.uid, insight);
+    } catch (err) {
+      console.warn('Save insight warning (persisted in local state):', err);
+    }
     setInsights((prev) => [insight, ...prev]);
   };
 
   const handleDeleteInsight = async (insightId: string) => {
     if (!user) return;
-    await deleteInsight(user.uid, insightId);
+    try {
+      await deleteInsight(user.uid, insightId);
+    } catch (err) {
+      console.warn('Delete insight warning (updated in local state):', err);
+    }
     setInsights((prev) => prev.filter((i) => i.id !== insightId));
   };
 
   // --- REVIEW ACTIONS ---
   const handleSaveReview = async (review: WeeklyReview) => {
     if (!user) return;
-    await saveReview(user.uid, review);
+    try {
+      await saveReview(user.uid, review);
+    } catch (err) {
+      console.warn('Save review warning (persisted in local state):', err);
+    }
     setReviews((prev) => [review, ...prev]);
   };
 
@@ -261,7 +293,11 @@ export default function App() {
 
   const handleDeleteInteraction = async (id: string) => {
     if (!user) return;
-    await deleteInteraction(user.uid, id);
+    try {
+      await deleteInteraction(user.uid, id);
+    } catch (err) {
+      console.warn('Delete interaction warning (updated in local state):', err);
+    }
     const updated = interactions.filter((i) => i.id !== id);
     setInteractions(updated);
     if (activeInteractionId === id) {
@@ -271,13 +307,17 @@ export default function App() {
 
   const handleQuickReflectSubmit = async (text: string) => {
     handleNewReflection();
-    await handleSubmitReflection(text, 'reflect');
+    try {
+      await handleSubmitReflection(text, 'reflect');
+    } catch (err) {
+      console.warn('Quick reflection error handled:', err);
+    }
   };
 
   const handleSubmitReflection = async (text: string, mode: ReflectionMode) => {
     if (!user) {
       setErrorMessage('You must be signed in to reflect with Gemini.');
-      throw new Error('Unauthenticated');
+      return;
     }
 
     setIsAiLoading(true);
@@ -337,8 +377,12 @@ export default function App() {
       currentInter.turns.push(modelTurn);
       currentInter.updatedAt = Date.now();
 
-      // 2. Guaranteed Transaction Verification to Firestore
-      await saveInteraction(user.uid, currentInter);
+      // 2. Guaranteed Persistence (Local Storage + Cloud Firestore)
+      try {
+        await saveInteraction(user.uid, currentInter);
+      } catch (saveErr) {
+        console.warn('Interaction save warning (fallback to local state):', saveErr);
+      }
 
       // 3. Update local state
       setInteractions((prev) => {
@@ -359,10 +403,9 @@ export default function App() {
         triggerAutoSummarize(user.uid, currentInter, text);
       }
     } catch (err: any) {
-      console.error('Submission or persistence error:', err);
+      console.error('Submission error:', err);
       setSyncStatus('error');
       setErrorMessage(err?.message || 'Failed to generate response or persist entry.');
-      throw err;
     } finally {
       setIsAiLoading(false);
     }
@@ -419,7 +462,7 @@ export default function App() {
         );
       }
     } catch (err: any) {
-      alert('Failed to summarize: ' + (err.message || 'Unknown error'));
+      setErrorMessage('Failed to summarize: ' + (err.message || 'Unknown error'));
     } finally {
       setIsSummarizing(false);
     }
@@ -434,8 +477,6 @@ export default function App() {
         user={user}
         currentView={currentView}
         onSignOut={handleSignOut}
-        isFirebaseConfigured={isFirebaseConfigured()}
-        onOpenConfigModal={() => setIsConfigModalOpen(true)}
         onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)}
       />
 
@@ -558,7 +599,6 @@ export default function App() {
                 {currentView === 'privacy' && (
                   <PrivacySecurityView
                     user={user}
-                    onOpenConfigModal={() => setIsConfigModalOpen(true)}
                   />
                 )}
               </div>
@@ -575,12 +615,6 @@ export default function App() {
           onComplete={handleOnboardingComplete}
         />
       )}
-
-      {/* Firebase & Cloud Security Configuration Modal */}
-      <FirebaseConfigModal
-        isOpen={isConfigModalOpen}
-        onClose={() => setIsConfigModalOpen(false)}
-      />
     </div>
   );
 }

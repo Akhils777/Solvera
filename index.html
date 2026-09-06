@@ -12,6 +12,20 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,300..700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <script>
+      // Cleanly intercept benign Vite dev-server HMR websocket connection closures in proxy environments
+      window.addEventListener('unhandledrejection', function (event) {
+        var reason = event.reason;
+        var msg = (reason && (reason.message || String(reason))) || '';
+        if (
+          msg.indexOf('WebSocket closed without opened') !== -1 ||
+          msg.indexOf('failed to connect to websocket') !== -1 ||
+          msg.indexOf('vite:ws') !== -1
+        ) {
+          event.preventDefault();
+        }
+      });
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -50,6 +50,8 @@ export function OnboardingModal({ isOpen, userId, onComplete }: OnboardingModalP
         updatedAt: Date.now(),
       };
       await onComplete(profile);
+    } catch (err) {
+      console.error('Failed to complete onboarding:', err);
     } finally {
       setIsSubmitting(false);
     }

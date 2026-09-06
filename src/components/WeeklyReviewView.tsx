@@ -114,9 +114,6 @@ export function WeeklyReviewView({
                 <Clock className="h-3.5 w-3.5 text-emerald-400" />
                 Week Period: {currentReview.weekStartDate} → {currentReview.weekEndDate}
               </span>
-              <span className="rounded-full bg-white/5 px-2 py-0.5 font-mono text-[10px] text-white/60">
-                {currentReview.modelUsed || 'gemini-3.6-flash'}
-              </span>
             </div>
 
             <h2 className="text-sm font-semibold uppercase tracking-wider text-emerald-400">

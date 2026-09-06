@@ -1,12 +1,12 @@
 import { AuthUser, AppView } from '../types';
-import { LogOut, Sparkles, HelpCircle, Menu } from 'lucide-react';
+import { LogOut, Sparkles, Menu } from 'lucide-react';
 
 interface HeaderProps {
   user: AuthUser | null;
   currentView?: AppView;
   onSignOut: () => void;
-  isFirebaseConfigured: boolean;
-  onOpenConfigModal: () => void;
+  isFirebaseConfigured?: boolean;
+  onOpenConfigModal?: () => void;
   onToggleMobileNav?: () => void;
 }
 
@@ -19,15 +19,13 @@ const VIEW_TITLES: Record<AppView, string> = {
   analytics: 'Personal Analytics',
   review: 'Weekly AI Review',
   history: 'Reflection History',
-  privacy: 'Privacy & Security Center',
+  privacy: 'Privacy & Data',
 };
 
 export function Header({
   user,
   currentView = 'dashboard',
   onSignOut,
-  isFirebaseConfigured,
-  onOpenConfigModal,
   onToggleMobileNav,
 }: HeaderProps) {
   return (
@@ -70,24 +68,10 @@ export function Header({
           </div>
         </div>
 
-        {/* Right: Storage Status & User Actions */}
+        {/* Right: User Profile & Actions */}
         <div className="flex items-center gap-2.5">
-          {/* Firestore Link Status Indicator */}
-          <button
-            id="cloud-config-status-button"
-            onClick={onOpenConfigModal}
-            className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/70 hover:bg-white/10 hover:text-white transition-all cursor-pointer"
-            title="Inspect Firebase and Cloud Run security configurations"
-          >
-            <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50"></div>
-            <span className="hidden md:inline text-[11px] uppercase tracking-wider font-mono">
-              {isFirebaseConfigured ? 'Firestore Isolated' : 'Firestore Sandbox'}
-            </span>
-            <HelpCircle className="h-3 w-3 text-white/30" />
-          </button>
-
           {user && (
-            <div className="flex items-center gap-2 pl-2 border-l border-white/10">
+            <div className="flex items-center gap-2">
               <div className="flex items-center gap-2">
                 {user.photoURL ? (
                   <img
