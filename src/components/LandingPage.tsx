@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   Shield,
   Sparkles,
@@ -8,6 +9,9 @@ import {
   ArrowRight,
   Compass,
   CheckCircle2,
+  Copy,
+  Check,
+  ExternalLink,
 } from 'lucide-react';
 
 interface LandingPageProps {
@@ -23,6 +27,17 @@ export function LandingPage({
   isLoading,
   error,
 }: LandingPageProps) {
+  const [copied, setCopied] = useState(false);
+  const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
+  const isUnauthorizedDomain = error?.toLowerCase().includes('unauthorized-domain');
+
+  const copyHostname = () => {
+    if (navigator.clipboard && currentHostname) {
+      navigator.clipboard.writeText(currentHostname);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
   return (
     <div className="min-h-[calc(100vh-4rem)] flex flex-col justify-center py-16 px-4 sm:px-6 lg:px-8 bg-[#080808] text-[#e0e0e0] relative overflow-hidden">
       {/* Background ambient radial glow */}
@@ -46,9 +61,64 @@ export function LandingPage({
 
         {/* Error Banner */}
         {error && (
-          <div className="mt-6 mx-auto max-w-md rounded-2xl border border-red-500/30 bg-red-950/40 backdrop-blur-sm p-4 text-left text-xs text-red-200">
-            <p className="font-semibold text-red-100">Authentication Notice</p>
-            <p className="mt-1 text-red-300">{error}</p>
+          <div className="mt-6 mx-auto max-w-lg rounded-2xl border border-red-500/30 bg-red-950/40 backdrop-blur-sm p-4 sm:p-5 text-left text-xs text-red-200 shadow-xl">
+            <div className="flex items-center gap-2">
+              <span className="flex h-2 w-2 rounded-full bg-red-400 animate-pulse" />
+              <p className="font-semibold text-red-100">
+                {isUnauthorizedDomain
+                  ? 'Domain Authorization Required in Firebase Console'
+                  : 'Authentication Notice'}
+              </p>
+            </div>
+
+            {isUnauthorizedDomain ? (
+              <div className="mt-2.5 space-y-3 text-red-200/90 leading-relaxed">
+                <p>
+                  Firebase Authentication prevents Google OAuth sign-in from domains that are not yet added to your Firebase Project&apos;s (<code className="text-amber-300 font-mono">solvera-bac83</code>) Authorized Domains list.
+                </p>
+
+                <div className="rounded-xl border border-red-500/20 bg-black/50 p-3">
+                  <div className="text-[11px] text-white/60 mb-1">Domain to authorize:</div>
+                  <div className="flex items-center justify-between gap-2 font-mono text-xs text-emerald-400 bg-black/80 px-3 py-2 rounded-lg border border-white/10">
+                    <span className="truncate select-all">{currentHostname}</span>
+                    <button
+                      type="button"
+                      onClick={copyHostname}
+                      className="shrink-0 flex items-center gap-1.5 text-xs text-white/90 hover:text-white bg-white/10 hover:bg-white/20 px-2.5 py-1 rounded-md cursor-pointer transition-colors"
+                    >
+                      {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                      <span>{copied ? 'Copied!' : 'Copy'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="text-[11px] space-y-1.5 text-white/70">
+                  <p className="font-semibold text-white/90">How to authorize in 3 simple steps:</p>
+                  <ol className="list-decimal pl-4 space-y-1 text-white/65">
+                    <li>
+                      Open your Firebase Console:{' '}
+                      <a
+                        href="https://console.firebase.google.com/project/solvera-bac83/authentication/settings"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-indigo-400 underline hover:text-indigo-300 inline-flex items-center gap-0.5"
+                      >
+                        Authentication Settings
+                        <ExternalLink className="h-2.5 w-2.5" />
+                      </a>
+                    </li>
+                    <li>
+                      Scroll down to <strong>Authorized domains</strong> and click <strong>Add domain</strong>
+                    </li>
+                    <li>
+                      Paste the domain above (<code className="text-amber-200">{currentHostname}</code>), click <strong>Save</strong>, and click <strong>Continue with Google</strong> again.
+                    </li>
+                  </ol>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-1 text-red-300">{error}</p>
+            )}
           </div>
         )}
 

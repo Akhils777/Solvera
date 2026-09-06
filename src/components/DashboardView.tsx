@@ -47,6 +47,7 @@ export function DashboardView({
   onToggleGoalAction,
 }: DashboardViewProps) {
   const [quickText, setQuickText] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Calculate greeting by hour
   const hour = new Date().getHours();
@@ -66,11 +67,19 @@ export function DashboardView({
   const latestReview = reviews[0] || null;
   const recentInteractions = interactions.slice(0, 4);
 
-  const handleQuickSubmit = (e: FormEvent) => {
+  const handleQuickSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!quickText.trim()) return;
-    onQuickReflectSubmit(quickText.trim());
-    setQuickText('');
+    const textToSubmit = quickText.trim();
+    if (!textToSubmit || isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      setQuickText('');
+      await onQuickReflectSubmit(textToSubmit);
+    } catch (err) {
+      console.warn('Quick reflect error:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -149,10 +158,10 @@ export function DashboardView({
           <button
             id="quick-reflection-submit-btn"
             type="submit"
-            disabled={!quickText.trim()}
+            disabled={!quickText.trim() || isSubmitting}
             className="flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-xs font-semibold text-white shadow-md shadow-indigo-600/20 hover:bg-indigo-500 transition-all disabled:opacity-40 cursor-pointer shrink-0"
           >
-            <span>Reflect with Solvéra</span>
+            <span>{isSubmitting ? 'Reflecting...' : 'Reflect with Solvéra'}</span>
             <ArrowRight className="h-3.5 w-3.5" />
           </button>
         </form>

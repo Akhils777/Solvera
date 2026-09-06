@@ -53,28 +53,40 @@ export function isFirebaseConfigured(): boolean {
   return Boolean(config.apiKey && config.projectId);
 }
 
+// Check if currently authenticated with a real Firebase Auth user matching userId
+export function isRealFirebaseUser(userId: string): boolean {
+  if (!userId || userId.startsWith('demo_user_')) return false;
+  const { auth } = initFirebase();
+  return Boolean(auth && auth.currentUser && auth.currentUser.uid === userId);
+}
+
 // Initialize Firebase services safely
 export function initFirebase() {
-  if (firebaseApp) {
-    return { app: firebaseApp, auth: authInstance, firestore: firestoreInstance };
+  if (!firebaseApp) {
+    const config = getFirebaseConfig();
+    if (config.apiKey && config.projectId) {
+      try {
+        firebaseApp = getApps().length === 0 ? initializeApp(config) : getApps()[0];
+      } catch (err) {
+        console.error('Firebase initialization error:', err);
+      }
+    }
   }
 
-  const config = getFirebaseConfig();
-  if (config.apiKey && config.projectId) {
-    try {
-      firebaseApp = getApps().length === 0 ? initializeApp(config) : getApp();
+  if (firebaseApp) {
+    if (!authInstance) {
       authInstance = getAuth(firebaseApp);
-      firestoreInstance = getFirestore(firebaseApp);
-      return { app: firebaseApp, auth: authInstance, firestore: firestoreInstance };
-    } catch (err) {
-      console.warn('Firebase initialization error, falling back to local storage auth:', err);
     }
+    if (!firestoreInstance) {
+      firestoreInstance = getFirestore(firebaseApp);
+    }
+    return { app: firebaseApp, auth: authInstance, firestore: firestoreInstance };
   }
 
   return { app: null, auth: null, firestore: null };
 }
 
-// Local mock storage for testing/preview when Firebase credentials are not yet injected
+// Local mock storage key (used for legacy cleanup)
 const LOCAL_STORAGE_USER_KEY = 'reflection_journal_auth_user';
 const LOCAL_STORAGE_INTERACTIONS_KEY = 'reflection_journal_interactions_';
 
@@ -82,30 +94,36 @@ const LOCAL_STORAGE_INTERACTIONS_KEY = 'reflection_journal_interactions_';
 export async function signInWithGoogle(): Promise<AuthUser> {
   const { auth } = initFirebase();
 
-  if (auth) {
-    const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' });
-    const result = await signInWithPopup(auth, provider);
-    const user = result.user;
-    return {
-      uid: user.uid,
-      email: user.email,
-      displayName: user.displayName,
-      photoURL: user.photoURL,
-      isDemo: false,
-    };
+  if (!auth) {
+    throw new Error(
+      'Firebase Authentication is not configured or failed to initialize. Please verify your Firebase project configuration.'
+    );
   }
 
-  // Fallback demo user for immediate testability in preview environments
-  const demoUser: AuthUser = {
-    uid: 'demo-user-' + Math.random().toString(36).substring(2, 9),
-    email: 'alex.journal@example.com',
-    displayName: 'Alex Carter',
-    photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
-    isDemo: true,
+  const provider = new GoogleAuthProvider();
+  provider.addScope('email');
+  provider.addScope('profile');
+  // Explicitly prompt the user to select their Google account
+  // even if they are already signed into one or more Google accounts in their browser.
+  provider.setCustomParameters({
+    prompt: 'select_account',
+  });
+
+  const result = await signInWithPopup(auth, provider);
+  const user = result.user;
+
+  // Clean up any legacy mock user data from localStorage
+  try {
+    localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
+  } catch {}
+
+  return {
+    uid: user.uid,
+    email: user.email,
+    displayName: user.displayName,
+    photoURL: user.photoURL,
+    isDemo: false,
   };
-  localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(demoUser));
-  return demoUser;
 }
 
 // Sign Out
@@ -114,12 +132,21 @@ export async function logOut(): Promise<void> {
   if (auth) {
     await firebaseSignOut(auth);
   }
-  localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
+  try {
+    localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
+  } catch {}
 }
 
 // Subscribe to Auth State Changes
 export function subscribeToAuth(callback: (user: AuthUser | null) => void): () => void {
   const { auth } = initFirebase();
+
+  // Clean up any stale legacy mock user in localStorage so it never triggers accidental auto-login
+  try {
+    if (localStorage.getItem(LOCAL_STORAGE_USER_KEY)) {
+      localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
+    }
+  } catch {}
 
   if (auth) {
     return firebaseOnAuthStateChanged(auth, (firebaseUser: FirebaseUser | null) => {
@@ -137,23 +164,12 @@ export function subscribeToAuth(callback: (user: AuthUser | null) => void): () =
     });
   }
 
-  // Check local session
-  const stored = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
-  if (stored) {
-    try {
-      callback(JSON.parse(stored));
-    } catch {
-      callback(null);
-    }
-  } else {
-    callback(null);
-  }
-
+  // If Firebase auth is not configured, do not auto-sign into any mock account
+  callback(null);
   return () => {};
 }
 
-// Save Journal Interaction to Cloud Firestore
-// Strictly isolated to /users/{userId}/interactions/{interactionId}
+// Save Journal Interaction
 export async function saveInteraction(
   userId: string,
   interaction: JournalInteraction
@@ -169,16 +185,7 @@ export async function saveInteraction(
     updatedAt: Date.now(),
   });
 
-  const { firestore } = initFirebase();
-
-  if (firestore) {
-    // Write directly to user isolated subcollection
-    const docRef = doc(firestore, 'users', userId, 'interactions', interaction.id);
-    await setDoc(docRef, sanitized, { merge: true });
-    return;
-  }
-
-  // Fallback to isolated user-specific local storage
+  // Always update local storage first for guaranteed immediate persistence
   const storageKey = `${LOCAL_STORAGE_INTERACTIONS_KEY}${userId}`;
   const existing = getLocalInteractions(userId);
   const index = existing.findIndex((i) => i.id === interaction.id);
@@ -187,7 +194,24 @@ export async function saveInteraction(
   } else {
     existing.unshift(sanitized);
   }
-  localStorage.setItem(storageKey, JSON.stringify(existing));
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(existing));
+  } catch (storageErr) {
+    console.warn('Local storage write warning:', storageErr);
+  }
+
+  // If real authenticated Firebase user, sync directly to Cloud Firestore
+  if (isRealFirebaseUser(userId)) {
+    const { firestore } = initFirebase();
+    if (firestore) {
+      try {
+        const docRef = doc(firestore, 'users', userId, 'interactions', interaction.id);
+        await setDoc(docRef, sanitized, { merge: true });
+      } catch (err) {
+        console.warn('Firestore write warning (persisted locally):', err);
+      }
+    }
+  }
 }
 
 // Load All Journal Interactions for current user
@@ -196,21 +220,27 @@ export async function loadUserInteractions(userId: string): Promise<JournalInter
     return [];
   }
 
-  const { firestore } = initFirebase();
-
-  if (firestore) {
-    try {
-      const colRef = collection(firestore, 'users', userId, 'interactions');
-      const q = query(colRef, orderBy('updatedAt', 'desc'));
-      const snapshot = await getDocs(q);
-      const items: JournalInteraction[] = [];
-      snapshot.forEach((d) => {
-        items.push(d.data() as JournalInteraction);
-      });
-      return items;
-    } catch (err) {
-      console.warn('Error reading from Firestore, checking local backup:', err);
-      return getLocalInteractions(userId);
+  if (isRealFirebaseUser(userId)) {
+    const { firestore } = initFirebase();
+    if (firestore) {
+      try {
+        const colRef = collection(firestore, 'users', userId, 'interactions');
+        const q = query(colRef, orderBy('updatedAt', 'desc'));
+        const snapshot = await getDocs(q);
+        const items: JournalInteraction[] = [];
+        snapshot.forEach((d) => {
+          items.push(d.data() as JournalInteraction);
+        });
+        if (items.length > 0) {
+          // Sync to local cache
+          try {
+            localStorage.setItem(`${LOCAL_STORAGE_INTERACTIONS_KEY}${userId}`, JSON.stringify(items));
+          } catch {}
+          return items;
+        }
+      } catch (err) {
+        console.warn('Error reading from Firestore, checking local backup:', err);
+      }
     }
   }
 
@@ -221,16 +251,26 @@ export async function loadUserInteractions(userId: string): Promise<JournalInter
 export async function deleteInteraction(userId: string, interactionId: string): Promise<void> {
   if (!userId || !interactionId) return;
 
-  const { firestore } = initFirebase();
-  if (firestore) {
-    const docRef = doc(firestore, 'users', userId, 'interactions', interactionId);
-    await deleteDoc(docRef);
-  }
-
   const storageKey = `${LOCAL_STORAGE_INTERACTIONS_KEY}${userId}`;
   const existing = getLocalInteractions(userId);
   const updated = existing.filter((i) => i.id !== interactionId);
-  localStorage.setItem(storageKey, JSON.stringify(updated));
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(updated));
+  } catch (storageErr) {
+    console.warn('Local storage delete warning:', storageErr);
+  }
+
+  if (isRealFirebaseUser(userId)) {
+    const { firestore } = initFirebase();
+    if (firestore) {
+      try {
+        const docRef = doc(firestore, 'users', userId, 'interactions', interactionId);
+        await deleteDoc(docRef);
+      } catch (err) {
+        console.warn('Error deleting interaction from Firestore:', err);
+      }
+    }
+  }
 }
 
 function getLocalInteractions(userId: string): JournalInteraction[] {
@@ -255,28 +295,44 @@ export async function saveUserProfile(userId: string, profile: UserProfile): Pro
     updatedAt: Date.now(),
   });
 
-  const { firestore } = initFirebase();
-  if (firestore) {
-    const docRef = doc(firestore, 'users', userId, 'profile', 'preferences');
-    await setDoc(docRef, sanitized, { merge: true });
-    return;
+  try {
+    localStorage.setItem(`${LOCAL_STORAGE_PROFILE_KEY}${userId}`, JSON.stringify(sanitized));
+  } catch (storageErr) {
+    console.warn('Local storage profile write warning:', storageErr);
   }
 
-  localStorage.setItem(`${LOCAL_STORAGE_PROFILE_KEY}${userId}`, JSON.stringify(sanitized));
+  if (isRealFirebaseUser(userId)) {
+    const { firestore } = initFirebase();
+    if (firestore) {
+      try {
+        const docRef = doc(firestore, 'users', userId, 'profile', 'preferences');
+        await setDoc(docRef, sanitized, { merge: true });
+      } catch (err) {
+        console.warn('Error saving profile to Firestore (saved locally):', err);
+      }
+    }
+  }
 }
 
 export async function loadUserProfile(userId: string): Promise<UserProfile | null> {
   if (!userId) return null;
-  const { firestore } = initFirebase();
-  if (firestore) {
-    try {
-      const docRef = doc(firestore, 'users', userId, 'profile', 'preferences');
-      const snap = await getDoc(docRef);
-      if (snap.exists()) {
-        return snap.data() as UserProfile;
+
+  if (isRealFirebaseUser(userId)) {
+    const { firestore } = initFirebase();
+    if (firestore) {
+      try {
+        const docRef = doc(firestore, 'users', userId, 'profile', 'preferences');
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const profileData = snap.data() as UserProfile;
+          try {
+            localStorage.setItem(`${LOCAL_STORAGE_PROFILE_KEY}${userId}`, JSON.stringify(profileData));
+          } catch {}
+          return profileData;
+        }
+      } catch (err) {
+        console.warn('Error loading profile from Firestore:', err);
       }
-    } catch (err) {
-      console.warn('Error loading profile from Firestore:', err);
     }
   }
 
@@ -302,13 +358,6 @@ export async function saveGoal(userId: string, goal: Goal): Promise<void> {
     updatedAt: Date.now(),
   });
 
-  const { firestore } = initFirebase();
-  if (firestore) {
-    const docRef = doc(firestore, 'users', userId, 'goals', goal.id);
-    await setDoc(docRef, sanitized, { merge: true });
-    return;
-  }
-
   const storageKey = `${LOCAL_STORAGE_GOALS_KEY}${userId}`;
   const existing = getLocalGoals(userId);
   const index = existing.findIndex((g) => g.id === goal.id);
@@ -317,23 +366,46 @@ export async function saveGoal(userId: string, goal: Goal): Promise<void> {
   } else {
     existing.unshift(sanitized);
   }
-  localStorage.setItem(storageKey, JSON.stringify(existing));
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(existing));
+  } catch (storageErr) {
+    console.warn('Local storage goal write warning:', storageErr);
+  }
+
+  if (isRealFirebaseUser(userId)) {
+    const { firestore } = initFirebase();
+    if (firestore) {
+      try {
+        const docRef = doc(firestore, 'users', userId, 'goals', goal.id);
+        await setDoc(docRef, sanitized, { merge: true });
+      } catch (err) {
+        console.warn('Error saving goal to Firestore (saved locally):', err);
+      }
+    }
+  }
 }
 
 export async function loadUserGoals(userId: string): Promise<Goal[]> {
   if (!userId) return [];
-  const { firestore } = initFirebase();
-  if (firestore) {
-    try {
-      const colRef = collection(firestore, 'users', userId, 'goals');
-      const q = query(colRef, orderBy('updatedAt', 'desc'));
-      const snapshot = await getDocs(q);
-      const items: Goal[] = [];
-      snapshot.forEach((d) => items.push(d.data() as Goal));
-      return items;
-    } catch (err) {
-      console.warn('Error reading goals from Firestore:', err);
-      return getLocalGoals(userId);
+
+  if (isRealFirebaseUser(userId)) {
+    const { firestore } = initFirebase();
+    if (firestore) {
+      try {
+        const colRef = collection(firestore, 'users', userId, 'goals');
+        const q = query(colRef, orderBy('updatedAt', 'desc'));
+        const snapshot = await getDocs(q);
+        const items: Goal[] = [];
+        snapshot.forEach((d) => items.push(d.data() as Goal));
+        if (items.length > 0) {
+          try {
+            localStorage.setItem(`${LOCAL_STORAGE_GOALS_KEY}${userId}`, JSON.stringify(items));
+          } catch {}
+          return items;
+        }
+      } catch (err) {
+        console.warn('Error reading goals from Firestore:', err);
+      }
     }
   }
   return getLocalGoals(userId);
@@ -341,15 +413,27 @@ export async function loadUserGoals(userId: string): Promise<Goal[]> {
 
 export async function deleteGoal(userId: string, goalId: string): Promise<void> {
   if (!userId || !goalId) return;
-  const { firestore } = initFirebase();
-  if (firestore) {
-    const docRef = doc(firestore, 'users', userId, 'goals', goalId);
-    await deleteDoc(docRef);
-  }
+
   const storageKey = `${LOCAL_STORAGE_GOALS_KEY}${userId}`;
   const existing = getLocalGoals(userId);
   const updated = existing.filter((g) => g.id !== goalId);
-  localStorage.setItem(storageKey, JSON.stringify(updated));
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(updated));
+  } catch (storageErr) {
+    console.warn('Local storage delete goal warning:', storageErr);
+  }
+
+  if (isRealFirebaseUser(userId)) {
+    const { firestore } = initFirebase();
+    if (firestore) {
+      try {
+        const docRef = doc(firestore, 'users', userId, 'goals', goalId);
+        await deleteDoc(docRef);
+      } catch (err) {
+        console.warn('Error deleting goal from Firestore:', err);
+      }
+    }
+  }
 }
 
 function getLocalGoals(userId: string): Goal[] {
@@ -372,13 +456,6 @@ export async function saveInsight(userId: string, insight: AIInsight): Promise<v
     userId,
   });
 
-  const { firestore } = initFirebase();
-  if (firestore) {
-    const docRef = doc(firestore, 'users', userId, 'insights', insight.id);
-    await setDoc(docRef, sanitized, { merge: true });
-    return;
-  }
-
   const storageKey = `${LOCAL_STORAGE_INSIGHTS_KEY}${userId}`;
   const existing = getLocalInsights(userId);
   const index = existing.findIndex((i) => i.id === insight.id);
@@ -387,23 +464,46 @@ export async function saveInsight(userId: string, insight: AIInsight): Promise<v
   } else {
     existing.unshift(sanitized);
   }
-  localStorage.setItem(storageKey, JSON.stringify(existing));
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(existing));
+  } catch (storageErr) {
+    console.warn('Local storage insight write warning:', storageErr);
+  }
+
+  if (isRealFirebaseUser(userId)) {
+    const { firestore } = initFirebase();
+    if (firestore) {
+      try {
+        const docRef = doc(firestore, 'users', userId, 'insights', insight.id);
+        await setDoc(docRef, sanitized, { merge: true });
+      } catch (err) {
+        console.warn('Error saving insight to Firestore (saved locally):', err);
+      }
+    }
+  }
 }
 
 export async function loadUserInsights(userId: string): Promise<AIInsight[]> {
   if (!userId) return [];
-  const { firestore } = initFirebase();
-  if (firestore) {
-    try {
-      const colRef = collection(firestore, 'users', userId, 'insights');
-      const q = query(colRef, orderBy('generatedAt', 'desc'));
-      const snapshot = await getDocs(q);
-      const items: AIInsight[] = [];
-      snapshot.forEach((d) => items.push(d.data() as AIInsight));
-      return items;
-    } catch (err) {
-      console.warn('Error reading insights from Firestore:', err);
-      return getLocalInsights(userId);
+
+  if (isRealFirebaseUser(userId)) {
+    const { firestore } = initFirebase();
+    if (firestore) {
+      try {
+        const colRef = collection(firestore, 'users', userId, 'insights');
+        const q = query(colRef, orderBy('generatedAt', 'desc'));
+        const snapshot = await getDocs(q);
+        const items: AIInsight[] = [];
+        snapshot.forEach((d) => items.push(d.data() as AIInsight));
+        if (items.length > 0) {
+          try {
+            localStorage.setItem(`${LOCAL_STORAGE_INSIGHTS_KEY}${userId}`, JSON.stringify(items));
+          } catch {}
+          return items;
+        }
+      } catch (err) {
+        console.warn('Error reading insights from Firestore:', err);
+      }
     }
   }
   return getLocalInsights(userId);
@@ -411,15 +511,27 @@ export async function loadUserInsights(userId: string): Promise<AIInsight[]> {
 
 export async function deleteInsight(userId: string, insightId: string): Promise<void> {
   if (!userId || !insightId) return;
-  const { firestore } = initFirebase();
-  if (firestore) {
-    const docRef = doc(firestore, 'users', userId, 'insights', insightId);
-    await deleteDoc(docRef);
-  }
+
   const storageKey = `${LOCAL_STORAGE_INSIGHTS_KEY}${userId}`;
   const existing = getLocalInsights(userId);
   const updated = existing.filter((i) => i.id !== insightId);
-  localStorage.setItem(storageKey, JSON.stringify(updated));
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(updated));
+  } catch (storageErr) {
+    console.warn('Local storage delete insight warning:', storageErr);
+  }
+
+  if (isRealFirebaseUser(userId)) {
+    const { firestore } = initFirebase();
+    if (firestore) {
+      try {
+        const docRef = doc(firestore, 'users', userId, 'insights', insightId);
+        await deleteDoc(docRef);
+      } catch (err) {
+        console.warn('Error deleting insight from Firestore:', err);
+      }
+    }
+  }
 }
 
 function getLocalInsights(userId: string): AIInsight[] {
@@ -442,13 +554,6 @@ export async function saveReview(userId: string, review: WeeklyReview): Promise<
     userId,
   });
 
-  const { firestore } = initFirebase();
-  if (firestore) {
-    const docRef = doc(firestore, 'users', userId, 'reviews', review.id);
-    await setDoc(docRef, sanitized, { merge: true });
-    return;
-  }
-
   const storageKey = `${LOCAL_STORAGE_REVIEWS_KEY}${userId}`;
   const existing = getLocalReviews(userId);
   const index = existing.findIndex((r) => r.id === review.id);
@@ -457,23 +562,46 @@ export async function saveReview(userId: string, review: WeeklyReview): Promise<
   } else {
     existing.unshift(sanitized);
   }
-  localStorage.setItem(storageKey, JSON.stringify(existing));
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(existing));
+  } catch (storageErr) {
+    console.warn('Local storage review write warning:', storageErr);
+  }
+
+  if (isRealFirebaseUser(userId)) {
+    const { firestore } = initFirebase();
+    if (firestore) {
+      try {
+        const docRef = doc(firestore, 'users', userId, 'reviews', review.id);
+        await setDoc(docRef, sanitized, { merge: true });
+      } catch (err) {
+        console.warn('Error saving review to Firestore (saved locally):', err);
+      }
+    }
+  }
 }
 
 export async function loadUserReviews(userId: string): Promise<WeeklyReview[]> {
   if (!userId) return [];
-  const { firestore } = initFirebase();
-  if (firestore) {
-    try {
-      const colRef = collection(firestore, 'users', userId, 'reviews');
-      const q = query(colRef, orderBy('createdAt', 'desc'));
-      const snapshot = await getDocs(q);
-      const items: WeeklyReview[] = [];
-      snapshot.forEach((d) => items.push(d.data() as WeeklyReview));
-      return items;
-    } catch (err) {
-      console.warn('Error reading reviews from Firestore:', err);
-      return getLocalReviews(userId);
+
+  if (isRealFirebaseUser(userId)) {
+    const { firestore } = initFirebase();
+    if (firestore) {
+      try {
+        const colRef = collection(firestore, 'users', userId, 'reviews');
+        const q = query(colRef, orderBy('createdAt', 'desc'));
+        const snapshot = await getDocs(q);
+        const items: WeeklyReview[] = [];
+        snapshot.forEach((d) => items.push(d.data() as WeeklyReview));
+        if (items.length > 0) {
+          try {
+            localStorage.setItem(`${LOCAL_STORAGE_REVIEWS_KEY}${userId}`, JSON.stringify(items));
+          } catch {}
+          return items;
+        }
+      } catch (err) {
+        console.warn('Error reading reviews from Firestore:', err);
+      }
     }
   }
   return getLocalReviews(userId);

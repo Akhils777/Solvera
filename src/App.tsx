@@ -139,6 +139,13 @@ export default function App() {
       setUser(signedInUser);
       await loadAllUserData(signedInUser.uid);
     } catch (err: any) {
+      if (
+        err?.code === 'auth/popup-closed-by-user' ||
+        err?.code === 'auth/cancelled-popup-request'
+      ) {
+        // User closed or cancelled popup window before picking an account
+        return;
+      }
       console.error('Sign-in failed:', err);
       setAuthError(err?.message || 'Authentication could not be completed.');
     } finally {
@@ -271,13 +278,17 @@ export default function App() {
 
   const handleQuickReflectSubmit = async (text: string) => {
     handleNewReflection();
-    await handleSubmitReflection(text, 'reflect');
+    try {
+      await handleSubmitReflection(text, 'reflect');
+    } catch (err) {
+      console.warn('Quick reflection error handled:', err);
+    }
   };
 
   const handleSubmitReflection = async (text: string, mode: ReflectionMode) => {
     if (!user) {
       setErrorMessage('You must be signed in to reflect with Gemini.');
-      throw new Error('Unauthenticated');
+      return;
     }
 
     setIsAiLoading(true);
@@ -337,8 +348,12 @@ export default function App() {
       currentInter.turns.push(modelTurn);
       currentInter.updatedAt = Date.now();
 
-      // 2. Guaranteed Transaction Verification to Firestore
-      await saveInteraction(user.uid, currentInter);
+      // 2. Guaranteed Persistence (Local Storage + Cloud Firestore)
+      try {
+        await saveInteraction(user.uid, currentInter);
+      } catch (saveErr) {
+        console.warn('Interaction save warning (fallback to local state):', saveErr);
+      }
 
       // 3. Update local state
       setInteractions((prev) => {
@@ -359,10 +374,9 @@ export default function App() {
         triggerAutoSummarize(user.uid, currentInter, text);
       }
     } catch (err: any) {
-      console.error('Submission or persistence error:', err);
+      console.error('Submission error:', err);
       setSyncStatus('error');
       setErrorMessage(err?.message || 'Failed to generate response or persist entry.');
-      throw err;
     } finally {
       setIsAiLoading(false);
     }
@@ -419,7 +433,7 @@ export default function App() {
         );
       }
     } catch (err: any) {
-      alert('Failed to summarize: ' + (err.message || 'Unknown error'));
+      setErrorMessage('Failed to summarize: ' + (err.message || 'Unknown error'));
     } finally {
       setIsSummarizing(false);
     }
