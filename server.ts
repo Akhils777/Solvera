@@ -15,10 +15,11 @@ app.use(express.urlencoded({ extended: true }));
 
 // Resilient Gemini Fallback Ladder
 const FALLBACK_MODELS = [
+  'gemini-3.8-flash',
+  'gemini-flash-latest',
   'gemini-3.6-flash',
   'gemini-3.1-flash-lite',
-  'gemini-flash-latest',
-  'gemini-3.7-flash',
+  'gemini-3.1-pro-preview',
 ];
 
 // Lazy initialization of GoogleGenAI client
@@ -424,8 +425,12 @@ Return ONLY a JSON object formatted strictly as:
 // --- VITE MIDDLEWARE & SERVER BOOTSTRAP ---
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
+    const isHmrDisabled = process.env.DISABLE_HMR === 'true';
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: isHmrDisabled ? false : undefined,
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);

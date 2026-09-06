@@ -166,13 +166,16 @@ export function GoalTrackerView({
       },
     ];
 
-    await onSaveGoal({
-      ...targetGoal,
-      actions: updatedActions,
-      updatedAt: Date.now(),
-    });
-
-    setNewActionText((prev) => ({ ...prev, [goalId]: '' }));
+    try {
+      await onSaveGoal({
+        ...targetGoal,
+        actions: updatedActions,
+        updatedAt: Date.now(),
+      });
+      setNewActionText((prev) => ({ ...prev, [goalId]: '' }));
+    } catch (err) {
+      console.error('Failed to add action to goal:', err);
+    }
   };
 
   return (

@@ -34,6 +34,8 @@ export function HistoryView({
       setDeletingId(id);
       try {
         await onDeleteInteraction(id);
+      } catch (err) {
+        console.error('Failed to delete interaction:', err);
       } finally {
         setDeletingId(null);
       }

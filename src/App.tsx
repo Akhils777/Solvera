@@ -176,14 +176,22 @@ export default function App() {
     setProfile(newProfile);
     setIsOnboardingOpen(false);
     if (user) {
-      await saveUserProfile(user.uid, newProfile);
+      try {
+        await saveUserProfile(user.uid, newProfile);
+      } catch (err) {
+        console.warn('Save user profile warning (persisted in local state):', err);
+      }
     }
   };
 
   // --- GOAL ACTIONS ---
   const handleSaveGoal = async (goal: Goal) => {
     if (!user) return;
-    await saveGoal(user.uid, goal);
+    try {
+      await saveGoal(user.uid, goal);
+    } catch (err) {
+      console.warn('Save goal warning (persisted in local state):', err);
+    }
     setGoals((prev) => {
       const index = prev.findIndex((g) => g.id === goal.id);
       if (index >= 0) {
@@ -197,7 +205,11 @@ export default function App() {
 
   const handleDeleteGoal = async (goalId: string) => {
     if (!user) return;
-    await deleteGoal(user.uid, goalId);
+    try {
+      await deleteGoal(user.uid, goalId);
+    } catch (err) {
+      console.warn('Delete goal warning (updated in local state):', err);
+    }
     setGoals((prev) => prev.filter((g) => g.id !== goalId));
   };
 
@@ -227,26 +239,42 @@ export default function App() {
       updatedAt: Date.now(),
     };
 
-    await handleSaveGoal(updatedGoal);
+    try {
+      await handleSaveGoal(updatedGoal);
+    } catch (err) {
+      console.warn('Toggle goal action warning:', err);
+    }
   };
 
   // --- INSIGHT ACTIONS ---
   const handleSaveInsight = async (insight: AIInsight) => {
     if (!user) return;
-    await saveInsight(user.uid, insight);
+    try {
+      await saveInsight(user.uid, insight);
+    } catch (err) {
+      console.warn('Save insight warning (persisted in local state):', err);
+    }
     setInsights((prev) => [insight, ...prev]);
   };
 
   const handleDeleteInsight = async (insightId: string) => {
     if (!user) return;
-    await deleteInsight(user.uid, insightId);
+    try {
+      await deleteInsight(user.uid, insightId);
+    } catch (err) {
+      console.warn('Delete insight warning (updated in local state):', err);
+    }
     setInsights((prev) => prev.filter((i) => i.id !== insightId));
   };
 
   // --- REVIEW ACTIONS ---
   const handleSaveReview = async (review: WeeklyReview) => {
     if (!user) return;
-    await saveReview(user.uid, review);
+    try {
+      await saveReview(user.uid, review);
+    } catch (err) {
+      console.warn('Save review warning (persisted in local state):', err);
+    }
     setReviews((prev) => [review, ...prev]);
   };
 
@@ -268,7 +296,11 @@ export default function App() {
 
   const handleDeleteInteraction = async (id: string) => {
     if (!user) return;
-    await deleteInteraction(user.uid, id);
+    try {
+      await deleteInteraction(user.uid, id);
+    } catch (err) {
+      console.warn('Delete interaction warning (updated in local state):', err);
+    }
     const updated = interactions.filter((i) => i.id !== id);
     setInteractions(updated);
     if (activeInteractionId === id) {
