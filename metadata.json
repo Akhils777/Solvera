@@ -1,0 +1,6 @@
+{
+  "name": "Solvéra",
+  "description": "Solvéra helps users turn their thoughts, reflections, goals, decisions, and personal data into clarity and meaningful action.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
