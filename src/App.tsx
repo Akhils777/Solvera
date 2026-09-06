@@ -27,7 +27,6 @@ import {
   deleteInsight,
   saveReview,
   loadUserReviews,
-  isFirebaseConfigured,
 } from './lib/firebase';
 import { askGeminiReflection, askGeminiSummarize } from './lib/gemini';
 import { Header } from './components/Header';
@@ -44,7 +43,6 @@ import { PrivacySecurityView } from './components/PrivacySecurityView';
 import { ReflectionFeed } from './components/ReflectionFeed';
 import { ReflectionInput } from './components/ReflectionInput';
 import { OnboardingModal } from './components/OnboardingModal';
-import { FirebaseConfigModal } from './components/FirebaseConfigModal';
 
 export default function App() {
   // Authentication State
@@ -73,7 +71,6 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   // Modals & Mobile Drawers
-  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   // Listen to Firebase Auth state
@@ -480,8 +477,6 @@ export default function App() {
         user={user}
         currentView={currentView}
         onSignOut={handleSignOut}
-        isFirebaseConfigured={isFirebaseConfigured()}
-        onOpenConfigModal={() => setIsConfigModalOpen(true)}
         onToggleMobileNav={() => setIsMobileNavOpen(!isMobileNavOpen)}
       />
 
@@ -604,7 +599,6 @@ export default function App() {
                 {currentView === 'privacy' && (
                   <PrivacySecurityView
                     user={user}
-                    onOpenConfigModal={() => setIsConfigModalOpen(true)}
                   />
                 )}
               </div>
@@ -621,12 +615,6 @@ export default function App() {
           onComplete={handleOnboardingComplete}
         />
       )}
-
-      {/* Firebase & Cloud Security Configuration Modal */}
-      <FirebaseConfigModal
-        isOpen={isConfigModalOpen}
-        onClose={() => setIsConfigModalOpen(false)}
-      />
     </div>
   );
 }

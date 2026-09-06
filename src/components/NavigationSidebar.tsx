@@ -52,7 +52,7 @@ export function NavigationSidebar({
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
     { id: 'review', label: 'Weekly Review', icon: CalendarCheck },
     { id: 'history', label: 'History', icon: Clock, badge: totalReflections || undefined },
-    { id: 'privacy', label: 'Privacy & Security', icon: ShieldCheck },
+    { id: 'privacy', label: 'Privacy & Data', icon: ShieldCheck },
   ];
 
   const handleNavClick = (view: AppView) => {
@@ -165,7 +165,7 @@ export function NavigationSidebar({
                   {user.displayName || 'Personal Explorer'}
                 </p>
                 <p className="text-[10px] text-white/40 truncate">
-                  {user.email || 'UID: ' + user.uid.slice(0, 8)}
+                  {user.email || 'Personal Account'}
                 </p>
               </div>
             </div>

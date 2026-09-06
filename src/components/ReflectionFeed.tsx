@@ -167,11 +167,6 @@ export function ReflectionFeed({
                   <span className="text-[10px] uppercase tracking-widest text-white/40">
                     {getModeLabel(turn.mode)}
                   </span>
-                  {turn.modelUsed && (
-                    <span className="rounded-full bg-white/5 border border-white/10 px-2 py-0.5 text-[9px] font-mono text-indigo-300">
-                      {turn.modelUsed}
-                    </span>
-                  )}
                 </div>
 
                 <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">

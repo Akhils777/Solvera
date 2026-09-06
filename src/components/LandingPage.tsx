@@ -66,7 +66,7 @@ export function LandingPage({
               <span className="flex h-2 w-2 rounded-full bg-red-400 animate-pulse" />
               <p className="font-semibold text-red-100">
                 {isUnauthorizedDomain
-                  ? 'Domain Authorization Required in Firebase Console'
+                  ? 'Sign-in Domain Authorization Required'
                   : 'Authentication Notice'}
               </p>
             </div>
@@ -74,7 +74,7 @@ export function LandingPage({
             {isUnauthorizedDomain ? (
               <div className="mt-2.5 space-y-3 text-red-200/90 leading-relaxed">
                 <p>
-                  Firebase Authentication prevents Google OAuth sign-in from domains that are not yet added to your Firebase Project&apos;s (<code className="text-amber-300 font-mono">solvera-bac83</code>) Authorized Domains list.
+                  Google Sign-In is not yet authorized for this domain. Please authorize this preview domain in your sign-in configuration.
                 </p>
 
                 <div className="rounded-xl border border-red-500/20 bg-black/50 p-3">
@@ -90,30 +90,6 @@ export function LandingPage({
                       <span>{copied ? 'Copied!' : 'Copy'}</span>
                     </button>
                   </div>
-                </div>
-
-                <div className="text-[11px] space-y-1.5 text-white/70">
-                  <p className="font-semibold text-white/90">How to authorize in 3 simple steps:</p>
-                  <ol className="list-decimal pl-4 space-y-1 text-white/65">
-                    <li>
-                      Open your Firebase Console:{' '}
-                      <a
-                        href="https://console.firebase.google.com/project/solvera-bac83/authentication/settings"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-indigo-400 underline hover:text-indigo-300 inline-flex items-center gap-0.5"
-                      >
-                        Authentication Settings
-                        <ExternalLink className="h-2.5 w-2.5" />
-                      </a>
-                    </li>
-                    <li>
-                      Scroll down to <strong>Authorized domains</strong> and click <strong>Add domain</strong>
-                    </li>
-                    <li>
-                      Paste the domain above (<code className="text-amber-200">{currentHostname}</code>), click <strong>Save</strong>, and click <strong>Continue with Google</strong> again.
-                    </li>
-                  </ol>
                 </div>
               </div>
             ) : (
@@ -176,7 +152,7 @@ export function LandingPage({
 
         <p className="mt-4 text-[11px] text-white/40 flex items-center justify-center gap-1.5 uppercase tracking-wider">
           <Lock className="h-3 w-3 text-white/30" />
-          <span>Zero passwords handled • Firestore user-isolated security rules</span>
+          <span>Private and secure • Your data is always yours</span>
         </p>
 
         {/* 5 Core Feature Pillars */}
@@ -233,16 +209,16 @@ export function LandingPage({
             </p>
           </div>
 
-          {/* Pillar 5: Owner-Bound Privacy */}
+          {/* Pillar 5: Private & Dedicated */}
           <div className="rounded-2xl border border-white/5 bg-[#0d0d0d] p-6 hover:border-white/10 transition-colors md:col-span-2">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-400 mb-4 border border-cyan-500/20">
               <Shield className="h-4 w-4" />
             </div>
             <h2 className="text-sm font-semibold text-white tracking-wide">
-              Privacy &amp; User-Isolated Security Architecture
+              Private, Secure &amp; Always Yours
             </h2>
             <p className="mt-2 text-xs text-white/50 leading-relaxed">
-              All documents, goals, and reflections are strictly sandboxed under <code className="text-indigo-300 font-mono text-[11px]">/users/{'{userId}'}/**</code> and secured by owner-bound Firestore security rules. No cross-user leakage, zero hardcoded keys, and full export sovereignty at any time.
+              Your reflections, goals, and thoughts are kept completely private to your account. Solvéra ensures complete confidentiality with dedicated data isolation, no third-party tracking, and full export sovereignty at any time.
             </p>
           </div>
         </div>
